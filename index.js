@@ -35,6 +35,9 @@ async function run() {
     const bookingsCollection = db.collection("bookings");
     const paymentCollection = db.collection("payments");
 
+    // === Users API ===
+    app.use("/users", require("./routes/users.routes")(usersCollection));
+
     // TEST API
     app.get("/", (req, res) => {
       res.send("SeatPao Server + MongoDB is Running!");
