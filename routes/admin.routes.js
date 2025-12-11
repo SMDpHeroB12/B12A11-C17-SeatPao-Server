@@ -9,14 +9,12 @@ module.exports = (
   paymentCollection
 ) => {
   // 1. GET ALL USERS (Manage Users)
-  // ================================
   router.get("/users", async (req, res) => {
     const result = await usersCollection.find().toArray();
     res.send(result);
   });
 
-  // 2. UPDATE USER ROLE (admin/vendor/user)
-  // ======================================
+  // 2. UPDATE USER ROLE
   router.patch("/role/:email", async (req, res) => {
     const email = req.params.email;
     const { role } = req.body;
@@ -30,14 +28,12 @@ module.exports = (
   });
 
   // 3. MARK VENDOR AS FRAUD
-  // ================================
   router.patch("/mark-fraud/:email", async (req, res) => {
     const email = req.params.email;
 
-    // Step 1 → Update usersCollection
     await usersCollection.updateOne({ email }, { $set: { fraudulent: true } });
 
-    // Step 2 → Hide all tickets of this vendor
+    // Hide vendor tickets
     await ticketsCollection.updateMany(
       { vendorEmail: email },
       { $set: { hidden: true } }
@@ -47,14 +43,60 @@ module.exports = (
   });
 
   // 4. ADMIN GET ALL TICKETS
-  // ================================
   router.get("/tickets", async (req, res) => {
     const result = await ticketsCollection.find().toArray();
     res.send(result);
   });
 
-  // 5. ADMIN DASHBOARD STATS
-  // ================================
+  // 5. ADVERTISE TICKETS – GET APPROVED TICKETS
+  router.get("/advertise-list", async (req, res) => {
+    try {
+      const tickets = await ticketsCollection
+        .find({ status: "approved" })
+        .toArray();
+
+      res.send(tickets);
+    } catch (err) {
+      res.status(500).send({ error: "Failed to load advertise list" });
+    }
+  });
+
+  // 6. TOGGLE ADVERTISE
+  router.patch("/advertise/:id", async (req, res) => {
+    try {
+      const id = req.params.id;
+
+      const ticket = await ticketsCollection.findOne({
+        _id: new ObjectId(id),
+      });
+
+      if (!ticket) return res.status(404).send({ error: "Ticket not found" });
+
+      const current = ticket.advertised === true;
+
+      // Count existing advertised tickets
+      const count = await ticketsCollection.countDocuments({
+        advertised: true,
+      });
+
+      if (!current && count >= 6) {
+        return res.status(400).send({
+          error: "Maximum 6 advertised tickets allowed",
+        });
+      }
+
+      const result = await ticketsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { advertised: !current } }
+      );
+
+      res.send({ success: true });
+    } catch (err) {
+      res.status(500).send({ error: "Failed to toggle advertise" });
+    }
+  });
+
+  // 7. ADMIN DASHBOARD STATS
   router.get("/stats", async (req, res) => {
     try {
       const users = await usersCollection.countDocuments();
@@ -71,7 +113,6 @@ module.exports = (
         revenue,
       });
     } catch (err) {
-      console.log(err);
       res.send({ error: "Failed to load stats" });
     }
   });

@@ -122,5 +122,14 @@ module.exports = (ticketsCollection, usersCollection) => {
     res.send(result);
   });
 
+  // ADMIN → Advertise Ticket
+  router.get("/advertised", async (req, res) => {
+    const ads = await ticketsCollection
+      .find({ advertised: true, hidden: { $ne: true } })
+      .toArray();
+
+    res.send(ads);
+  });
+
   return router;
 };
