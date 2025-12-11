@@ -1,81 +1,123 @@
 const express = require("express");
 const router = express.Router();
+const { ObjectId } = require("mongodb");
 
 module.exports = (ticketsCollection, usersCollection) => {
-  //  Get ALL visible tickets (public)
-
-  router.get("/all", async (req, res) => {
+  // PUBLIC → Latest Tickets (limit 6)
+  // ================================
+  router.get("/latest", async (req, res) => {
     try {
       const result = await ticketsCollection
-        .find({ hidden: { $ne: true } })
+        .find({ status: "approved", hidden: { $ne: true } })
         .sort({ createdAt: -1 })
+        .limit(6)
         .toArray();
 
       res.send(result);
     } catch (err) {
-      console.error("Error fetching all tickets:", err);
+      console.error("Error in /latest:", err);
       res.status(500).send({ error: "Server error" });
     }
   });
 
-  // 1. GET all visible tickets (public)
+  // PUBLIC → Advertised Tickets (Home page)
+  // =======================================
+  router.get("/advertised", async (req, res) => {
+    try {
+      const result = await ticketsCollection
+        .find({
+          advertised: true,
+          status: "approved",
+          hidden: { $ne: true },
+        })
+        .toArray();
+
+      res.send(result);
+    } catch (err) {
+      console.error("Error in /advertised:", err);
+      res.status(500).send({ error: "Server error" });
+    }
+  });
+
+  // PUBLIC → Get only APPROVED tickets
   router.get("/", async (req, res) => {
-    const result = await ticketsCollection
-      .find({ hidden: { $ne: true } })
-      .toArray();
-    res.send(result);
+    try {
+      const result = await ticketsCollection
+        .find({ status: "approved", hidden: { $ne: true } })
+        .sort({ createdAt: -1 })
+        .toArray();
+      res.send(result);
+    } catch (err) {
+      console.error("Public tickets fetch error:", err);
+      res.status(500).send({ error: "Server error" });
+    }
   });
 
-  // 2. GET single ticket by ID
+  // PUBLIC → Get single approved ticket
   router.get("/:id", async (req, res) => {
-    const id = req.params.id;
-    const { ObjectId } = require("mongodb");
+    try {
+      const id = req.params.id;
 
-    const result = await ticketsCollection.findOne({
-      _id: new ObjectId(id),
-      hidden: { $ne: true },
-    });
+      const result = await ticketsCollection.findOne({
+        _id: new ObjectId(id),
+        status: "approved",
+        hidden: { $ne: true },
+      });
 
-    res.send(result || {});
+      res.send(result || {});
+    } catch (err) {
+      console.error("Single ticket fetch error:", err);
+      res.status(500).send({ error: "Server error" });
+    }
   });
 
-  // 3. Vendor → Add Ticket
+  // VENDOR → Add ticket
   router.post("/", async (req, res) => {
     const ticket = req.body;
-    ticket.hidden = false; // Default visible
 
-    // Auto timestamp for sorting
+    ticket.status = "pending";
+    ticket.hidden = false;
     ticket.createdAt = new Date();
 
     const result = await ticketsCollection.insertOne(ticket);
     res.send(result);
   });
 
-  // 4. Vendor → My Tickets
+  // VENDOR → My Tickets
   router.get("/vendor/my-tickets", async (req, res) => {
     const email = req.query.email;
-
     const result = await ticketsCollection
       .find({ vendorEmail: email })
       .toArray();
-
     res.send(result);
   });
 
-  // 5. Admin → Manage Tickets (show ALL tickets)
+  // ADMIN → Get ALL tickets
   router.get("/admin/all", async (req, res) => {
     const result = await ticketsCollection.find().toArray();
     res.send(result);
   });
 
-  // 6. Delete Ticket (Admin or Vendor)
-  router.delete("/:id", async (req, res) => {
+  // ADMIN → Approve Ticket
+  router.patch("/approve/:id", async (req, res) => {
     const id = req.params.id;
-    const { ObjectId } = require("mongodb");
 
-    const result = await ticketsCollection.deleteOne({
-      _id: new ObjectId(id),
-    });
+    const result = await ticketsCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { status: "approved", hidden: false } }
+    );
+
+    res.send(result);
+  });
+
+  // ADMIN → Reject Ticket
+  router.patch("/reject/:id", async (req, res) => {
+    const id = req.params.id;
+
+    const result = await ticketsCollection.updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { status: "rejected", hidden: true } }
+    );
 
     res.send(result);
   });
