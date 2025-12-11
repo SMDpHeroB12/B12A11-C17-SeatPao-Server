@@ -2,69 +2,38 @@ const express = require("express");
 const router = express.Router();
 const { ObjectId } = require("mongodb");
 
-/**
- * Bookings Routes
- * module.exports = (bookingsCollection, ticketsCollection) => { ... }
- *
- * Booking document shape:
- * {
- *   _id,
- *   ticketId,           // ObjectId string
- *   ticketTitle,
- *   vendorEmail,
- *   userEmail,
- *   userName,
- *   quantity,           // number of seats booked
- *   price,              // per-seat price (number) OR total price
- *   total,              // quantity * price
- *   paid: false,        // boolean
- *   transactionId: "",  // if paid
- *   createdAt: Date
- * }
- */
-
 module.exports = (bookingsCollection, ticketsCollection) => {
-  // Create booking (atomic seat decrement)
+  // Create booking (atomic seat decrement) — set status "pending"
   router.post("/", async (req, res) => {
     try {
-      const {
-        ticketId, // string ID
-        quantity = 1,
-        userEmail,
-        userName,
-      } = req.body;
-
-      if (!ticketId || !userEmail) {
+      const { ticketId, quantity = 1, userEmail, userName } = req.body;
+      if (!ticketId || !userEmail)
         return res.status(400).send({ error: "Missing ticketId or userEmail" });
-      }
-
       const q = Number(quantity);
       if (q <= 0) return res.status(400).send({ error: "Invalid quantity" });
 
-      let ticketObjectId;
+      const ticketObjectId = new ObjectId(ticketId);
 
-      try {
-        ticketObjectId = new ObjectId(ticketId);
-      } catch (err) {
-        return res.status(400).send({ error: "Invalid ticketId format" });
-      }
-
-      // Atomically decrement seats
+      // Decrement seats only if enough seats and not hidden and approved
       const ticketUpdate = await ticketsCollection.findOneAndUpdate(
-        { _id: ticketObjectId, seats: { $gte: q }, hidden: { $ne: true } },
+        {
+          _id: ticketObjectId,
+          seats: { $gte: q },
+          hidden: { $ne: true },
+          status: "approved",
+        },
         { $inc: { seats: -q } },
         { returnDocument: "after" }
       );
 
-      // IMPORTANT FIX:
-      if (!ticketUpdate || !ticketUpdate.value) {
+      if (!ticketUpdate.value) {
         return res.status(400).send({
-          error: "Not enough seats, ticket not found, or ticket is hidden",
+          error:
+            "Not enough seats available or ticket not found/hidden/unapproved",
         });
       }
 
       const ticket = ticketUpdate.value;
-
       const price = Number(ticket.price || 0);
       const total = price * q;
 
@@ -79,6 +48,7 @@ module.exports = (bookingsCollection, ticketsCollection) => {
         total,
         paid: false,
         transactionId: null,
+        status: "pending",
         createdAt: new Date(),
       };
 
@@ -100,16 +70,28 @@ module.exports = (bookingsCollection, ticketsCollection) => {
   router.get("/", async (req, res) => {
     try {
       const email = req.query.email;
-      if (!email) {
+      if (!email)
         return res.status(400).send({ error: "email query param required" });
-      }
-
       const result = await bookingsCollection
         .find({ userEmail: email })
         .toArray();
       res.send(result);
     } catch (err) {
       console.error("Get user bookings error:", err);
+      res.status(500).send({ error: err.message });
+    }
+  });
+
+  // Get single booking
+  router.get("/single/:id", async (req, res) => {
+    try {
+      const id = req.params.id;
+      const booking = await bookingsCollection.findOne({
+        _id: new ObjectId(id),
+      });
+      res.send(booking || {});
+    } catch (err) {
+      console.error("Get single booking:", err);
       res.status(500).send({ error: err.message });
     }
   });
@@ -125,7 +107,7 @@ module.exports = (bookingsCollection, ticketsCollection) => {
     }
   });
 
-  // Stats: get total bookings count (for admin dashboard)
+  // Stats: get total bookings count (for admin/dashboard)
   router.get("/count", async (req, res) => {
     try {
       const count = await bookingsCollection.countDocuments();
@@ -134,14 +116,6 @@ module.exports = (bookingsCollection, ticketsCollection) => {
       console.error("Get bookings count error:", err);
       res.status(500).send({ error: err.message });
     }
-  });
-  //single booking API
-  router.get("/single/:id", async (req, res) => {
-    const id = req.params.id;
-    const { ObjectId } = require("mongodb");
-
-    const booking = await bookingsCollection.findOne({ _id: new ObjectId(id) });
-    res.send(booking || {});
   });
 
   // Mark booking as paid (attach transaction id etc.)
@@ -160,22 +134,63 @@ module.exports = (bookingsCollection, ticketsCollection) => {
     }
   });
 
-  // Delete / Cancel booking (restore seats)
+  // Vendor: accept booking (status -> accepted)
+  router.patch("/vendor/accept/:id", async (req, res) => {
+    try {
+      const id = req.params.id;
+      const result = await bookingsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { status: "accepted" } }
+      );
+      res.send(result);
+    } catch (err) {
+      console.error("Vendor accept error:", err);
+      res.status(500).send({ error: err.message });
+    }
+  });
+
+  // Vendor: reject booking (status -> rejected) and restore seats
+  router.patch("/vendor/reject/:id", async (req, res) => {
+    try {
+      const id = req.params.id;
+      const booking = await bookingsCollection.findOne({
+        _id: new ObjectId(id),
+      });
+      if (!booking) return res.status(404).send({ error: "Booking not found" });
+
+      const del = await bookingsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: { status: "rejected" } }
+      );
+
+      // restore seats to ticket
+      try {
+        await ticketsCollection.updateOne(
+          { _id: new ObjectId(booking.ticketId) },
+          { $inc: { seats: booking.quantity } }
+        );
+      } catch (err) {
+        console.error("Failed to restore seats:", err);
+      }
+
+      res.send(del);
+    } catch (err) {
+      console.error("Vendor reject error:", err);
+      res.status(500).send({ error: err.message });
+    }
+  });
+
+  // Delete / Cancel booking (user) — restore seats
   router.delete("/:id", async (req, res) => {
     try {
       const id = req.params.id;
       const booking = await bookingsCollection.findOne({
         _id: new ObjectId(id),
       });
+      if (!booking) return res.status(404).send({ error: "Booking not found" });
 
-      if (!booking) {
-        return res.status(404).send({ error: "Booking not found" });
-      }
-
-      // Remove booking
       const del = await bookingsCollection.deleteOne({ _id: new ObjectId(id) });
 
-      // Restore seats to ticket (if ticket exists)
       try {
         await ticketsCollection.updateOne(
           { _id: new ObjectId(booking.ticketId) },
