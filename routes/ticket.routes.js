@@ -4,7 +4,6 @@ const { ObjectId } = require("mongodb");
 
 module.exports = (ticketsCollection, usersCollection) => {
   // PUBLIC → Latest Tickets (limit 6)
-  // ================================
   router.get("/latest", async (req, res) => {
     try {
       const result = await ticketsCollection
@@ -21,7 +20,6 @@ module.exports = (ticketsCollection, usersCollection) => {
   });
 
   // PUBLIC → Advertised Tickets (Home page)
-  // =======================================
   router.get("/advertised", async (req, res) => {
     try {
       const result = await ticketsCollection
@@ -39,7 +37,7 @@ module.exports = (ticketsCollection, usersCollection) => {
     }
   });
 
-  // PUBLIC → Get only APPROVED tickets
+  // PUBLIC → Get only APPROVED tickets (default)
   router.get("/", async (req, res) => {
     try {
       const result = await ticketsCollection
@@ -49,6 +47,20 @@ module.exports = (ticketsCollection, usersCollection) => {
       res.send(result);
     } catch (err) {
       console.error("Public tickets fetch error:", err);
+      res.status(500).send({ error: "Server error" });
+    }
+  });
+
+  // OPTIONAL alias for older client code if present
+  router.get("/all", async (req, res) => {
+    try {
+      const result = await ticketsCollection
+        .find({ status: "approved", hidden: { $ne: true } })
+        .sort({ createdAt: -1 })
+        .toArray();
+      res.send(result);
+    } catch (err) {
+      console.error("Public tickets fetch error (/all):", err);
       res.status(500).send({ error: "Server error" });
     }
   });
@@ -120,15 +132,6 @@ module.exports = (ticketsCollection, usersCollection) => {
     );
 
     res.send(result);
-  });
-
-  // ADMIN → Advertise Ticket
-  router.get("/advertised", async (req, res) => {
-    const ads = await ticketsCollection
-      .find({ advertised: true, hidden: { $ne: true } })
-      .toArray();
-
-    res.send(ads);
   });
 
   return router;
