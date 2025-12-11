@@ -43,7 +43,8 @@ async function run() {
       require("./routes/admin.routes")(
         usersCollection,
         ticketsCollection,
-        bookingsCollection
+        bookingsCollection,
+        paymentCollection
       )
     );
 

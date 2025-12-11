@@ -2,9 +2,8 @@ const express = require("express");
 const router = express.Router();
 
 module.exports = (ticketsCollection, usersCollection) => {
-  // ================================
-  // NEW: Get ALL visible tickets (public)
-  // ================================
+  //  Get ALL visible tickets (public)
+
   router.get("/all", async (req, res) => {
     try {
       const result = await ticketsCollection

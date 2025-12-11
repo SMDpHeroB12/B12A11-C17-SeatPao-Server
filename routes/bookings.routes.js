@@ -135,6 +135,14 @@ module.exports = (bookingsCollection, ticketsCollection) => {
       res.status(500).send({ error: err.message });
     }
   });
+  //single booking API
+  router.get("/single/:id", async (req, res) => {
+    const id = req.params.id;
+    const { ObjectId } = require("mongodb");
+
+    const booking = await bookingsCollection.findOne({ _id: new ObjectId(id) });
+    res.send(booking || {});
+  });
 
   // Mark booking as paid (attach transaction id etc.)
   router.patch("/pay/:id", async (req, res) => {
