@@ -3,6 +3,8 @@ const cors = require("cors");
 require("dotenv").config();
 const { MongoClient, ServerApiVersion } = require("mongodb");
 
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+
 const app = express();
 const port = process.env.PORT || 5000;
 
@@ -35,8 +37,46 @@ async function run() {
     const bookingsCollection = db.collection("bookings");
     const paymentCollection = db.collection("payments");
 
+    // === Admin API ===
+    app.use(
+      "/admin",
+      require("./routes/admin.routes")(
+        usersCollection,
+        ticketsCollection,
+        bookingsCollection
+      )
+    );
+
+    // === Vendors API ===
+
+    app.use(
+      "/vendor",
+      require("./routes/vendor.routes")(ticketsCollection, bookingsCollection)
+    );
+
     // === Users API ===
-    app.use("/users", require("./routes/users.routes")(usersCollection));
+    app.use(
+      "/users",
+      require("./routes/users.routes")(usersCollection, ticketsCollection)
+    );
+
+    // Tickets API
+    app.use(
+      "/tickets",
+      require("./routes/ticket.routes")(ticketsCollection, usersCollection)
+    );
+
+    // === Bookings API ===
+    app.use(
+      "/bookings",
+      require("./routes/bookings.routes")(bookingsCollection, ticketsCollection)
+    );
+
+    // === Payments API ===
+    app.use(
+      "/payments",
+      require("./routes/payments.routes")(bookingsCollection)
+    );
 
     // TEST API
     app.get("/", (req, res) => {
