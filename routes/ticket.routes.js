@@ -2,8 +2,24 @@ const express = require("express");
 const router = express.Router();
 
 module.exports = (ticketsCollection, usersCollection) => {
-  // 1. GET all visible tickets (public)
+  // ================================
+  // NEW: Get ALL visible tickets (public)
+  // ================================
+  router.get("/all", async (req, res) => {
+    try {
+      const result = await ticketsCollection
+        .find({ hidden: { $ne: true } })
+        .sort({ createdAt: -1 })
+        .toArray();
 
+      res.send(result);
+    } catch (err) {
+      console.error("Error fetching all tickets:", err);
+      res.status(500).send({ error: "Server error" });
+    }
+  });
+
+  // 1. GET all visible tickets (public)
   router.get("/", async (req, res) => {
     const result = await ticketsCollection
       .find({ hidden: { $ne: true } })
@@ -12,7 +28,6 @@ module.exports = (ticketsCollection, usersCollection) => {
   });
 
   // 2. GET single ticket by ID
-
   router.get("/:id", async (req, res) => {
     const id = req.params.id;
     const { ObjectId } = require("mongodb");
@@ -26,17 +41,18 @@ module.exports = (ticketsCollection, usersCollection) => {
   });
 
   // 3. Vendor → Add Ticket
-
   router.post("/", async (req, res) => {
     const ticket = req.body;
     ticket.hidden = false; // Default visible
+
+    // Auto timestamp for sorting
+    ticket.createdAt = new Date();
 
     const result = await ticketsCollection.insertOne(ticket);
     res.send(result);
   });
 
   // 4. Vendor → My Tickets
-
   router.get("/vendor/my-tickets", async (req, res) => {
     const email = req.query.email;
 
@@ -48,14 +64,12 @@ module.exports = (ticketsCollection, usersCollection) => {
   });
 
   // 5. Admin → Manage Tickets (show ALL tickets)
-
   router.get("/admin/all", async (req, res) => {
     const result = await ticketsCollection.find().toArray();
     res.send(result);
   });
 
   // 6. Delete Ticket (Admin or Vendor)
-
   router.delete("/:id", async (req, res) => {
     const id = req.params.id;
     const { ObjectId } = require("mongodb");
