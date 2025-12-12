@@ -76,7 +76,11 @@ async function run() {
     // === Payments API ===
     app.use(
       "/payments",
-      require("./routes/payments.routes")(bookingsCollection)
+      require("./routes/payments.routes")(
+        bookingsCollection,
+        ticketsCollection,
+        paymentCollection
+      )
     );
 
     // TEST API

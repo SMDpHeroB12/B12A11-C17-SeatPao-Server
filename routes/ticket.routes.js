@@ -51,7 +51,6 @@ module.exports = (ticketsCollection, usersCollection) => {
     }
   });
 
-  // OPTIONAL alias for older client code if present
   router.get("/all", async (req, res) => {
     try {
       const result = await ticketsCollection
