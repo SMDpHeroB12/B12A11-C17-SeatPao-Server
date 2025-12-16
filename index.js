@@ -169,7 +169,7 @@ async function run() {
 
     /* =====================================================
     ADMIN DASHBOARD OVERVIEW
-===================================================== */
+    ===================================================== */
     app.get("/dashboard/admin", async (req, res) => {
       try {
         const totalUsers = await users.countDocuments();
@@ -204,7 +204,7 @@ async function run() {
 
     /* =====================================================
       TICKETS (PUBLIC)
-  ===================================================== */
+       ===================================================== */
     app.get("/tickets", async (req, res) => {
       const result = await tickets
         .find({ status: "approved", hidden: false })
@@ -469,7 +469,7 @@ async function run() {
             price_data: {
               currency: "bdt",
               product_data: { name: booking.ticketTitle },
-              unit_amount: booking.totalPrice,
+              unit_amount: booking.totalPrice * 100,
             },
             quantity: 1,
           },
